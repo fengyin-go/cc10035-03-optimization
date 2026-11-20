@@ -14,9 +14,25 @@ class Store:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        # 质量报告是快照比对的取证结果，不属于资源模块，但需要跨请求保留。
+        self._quality_reports: list[dict[str, Any]] = []
+        self._next_report_id = 1
+        # 重复登记只记录一次尝试，不写入快照表，避免产生多余比较区间。
+        self._duplicate_registrations: list[dict[str, Any]] = []
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)
+
+    def quality_reports(self) -> list[dict[str, Any]]:
+        return self._quality_reports
+
+    def next_report_id(self) -> int:
+        report_id = self._next_report_id
+        self._next_report_id += 1
+        return report_id
+
+    def duplicate_registrations(self) -> list[dict[str, Any]]:
+        return self._duplicate_registrations
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])

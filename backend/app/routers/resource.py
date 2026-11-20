@@ -73,6 +73,46 @@ def export_entries(
     )
 
 
+@router.get("/{module}/snapshot-difference", response_model=dict)
+def snapshot_difference(
+    module: str,
+    page_uri: str = Query(default="", alias="页面URI"),
+) -> dict[str, Any]:
+    """快照差异数据视图：按实际采集顺序列出同页快照与比较区间。"""
+    service = require_service(module)
+    builder = getattr(service, "build_difference_view", None)
+    if builder is None:
+        raise HTTPException(status_code=404, detail=f"{module} 不支持快照差异视图")
+    if not page_uri.strip():
+        raise HTTPException(status_code=400, detail="缺少查询参数：页面URI")
+    return builder(page_uri)
+
+
+@router.get("/{module}/reports", response_model=dict)
+def list_reports(
+    module: str,
+    page_uri: str | None = Query(default=None, alias="页面URI"),
+) -> dict[str, Any]:
+    """质量报告列表：每次生成都会保留当时的证据，供迟到快照复核。"""
+    service = require_service(module)
+    lister = getattr(service, "list_snapshot_reports", None)
+    if lister is None:
+        raise HTTPException(status_code=404, detail=f"{module} 不支持质量报告")
+    return lister(page_uri)
+
+
+@router.post("/{module}/reports", response_model=dict)
+def create_report(module: str, payload: EntryPayload) -> dict[str, Any]:
+    service = require_service(module)
+    creator = getattr(service, "create_snapshot_report", None)
+    if creator is None:
+        raise HTTPException(status_code=404, detail=f"{module} 不支持质量报告")
+    result = creator(payload.values)
+    if not result.get("ok"):
+        return result
+    return result
+
+
 @router.get("/{module}/{entry_id}", response_model=dict)
 def get_entry(module: str, entry_id: int) -> dict[str, Any]:
     service = require_service(module)
@@ -88,6 +128,9 @@ def create_entry(module: str, payload: EntryPayload) -> ActionResult:
     entry, missing = service.create_entry(payload.values)
     if missing:
         return ActionResult(ok=False, message=f"缺少必填字段：{'、'.join(missing)}")
+    if entry.get("duplicate"):
+        return ActionResult(
+            ok=True, message=f"该{service.ENTITY}已登记，复用快照 {entry.get('id')}", entry=entry)
     return ActionResult(ok=True, message=f"{service.ENTITY}已登记", entry=entry)
 
 

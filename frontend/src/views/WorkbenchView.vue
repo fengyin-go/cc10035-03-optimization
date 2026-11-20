@@ -83,6 +83,7 @@
             {{ creating ? '提交中…' : '确认登记' }}
           </button>
         </div>
+        <p v-if="createMessage" class="create-hint" data-testid="create-message">{{ createMessage }}</p>
       </form>
     </div>
 
@@ -90,6 +91,44 @@
       <span>共 {{ total }} 条{{ meta.name }}记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <div v-if="meta.key === 'page_snapshot'" class="snapshot-panel">
+      <form class="filter-bar" @submit.prevent="loadDiffView">
+        <label class="filter-item">
+          <span>页面URI</span>
+          <input
+            v-model="diffPageUri"
+            data-testid="diff-page-uri"
+            placeholder="输入页面URI查看同页快照差异"
+          />
+        </label>
+        <button class="btn" data-testid="diff-load" type="submit">查看差异视图</button>
+      </form>
+      <SnapshotDiffView
+        v-if="activePageUri"
+        :page-uri="activePageUri"
+        :refresh-key="diffRefreshKey"
+      />
+    </div>
+
+    <div v-else-if="meta.key === 'quality_check'" class="snapshot-panel">
+      <form class="filter-bar" @submit.prevent="loadDiffView">
+        <label class="filter-item">
+          <span>页面URI</span>
+          <input
+            v-model="diffPageUri"
+            data-testid="diff-page-uri"
+            placeholder="输入页面URI查看报告与快照差异"
+          />
+        </label>
+        <button class="btn" data-testid="diff-load" type="submit">查看质量报告</button>
+      </form>
+      <SnapshotDiffView
+        v-if="activePageUri"
+        :page-uri="activePageUri"
+        :refresh-key="diffRefreshKey"
+      />
+    </div>
   </section>
 </template>
 
@@ -103,6 +142,7 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/backend-service'
+import SnapshotDiffView from '@/components/SnapshotDiffView.vue'
 import type { EntryRow } from '@/data/types'
 
 const props = defineProps<{ moduleKey: string }>()
@@ -110,6 +150,15 @@ const meta = moduleMeta(props.moduleKey)
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const diffPageUri = ref('')
+const activePageUri = ref('')
+const diffRefreshKey = ref(0)
+const createMessage = ref('')
+
+function loadDiffView() {
+  activePageUri.value = diffPageUri.value.trim()
+  diffRefreshKey.value += 1
+}
 const filters = ref<Record<string, string>>({})
 const filterFields = meta.fields.slice(0, 3)
 const showCreate = ref(false)
@@ -147,6 +196,7 @@ async function exportRows() {
 function openCreate() {
   createValues.value = Object.fromEntries(meta.fields.map((field) => [field, '']))
   errorMessage.value = ''
+  createMessage.value = ''
   showCreate.value = true
 }
 
@@ -156,6 +206,19 @@ async function submitCreate() {
   try {
     const result = await createEntry(meta.key, createValues.value)
     if (!result.ok) throw new Error(result.message)
+    if (meta.key === 'page_snapshot') {
+      const uri = createValues.value['页面URI']?.trim()
+      if (uri) {
+        diffPageUri.value = uri
+        activePageUri.value = uri
+        diffRefreshKey.value += 1
+      }
+    }
+    if (result.entry?.duplicate) {
+      createMessage.value = result.message
+      await reload()
+      return
+    }
     showCreate.value = false
     await reload()
   } catch (error) {

@@ -120,10 +120,26 @@ class QualityCheckService(BaseModuleService):
             "ok": True,
             "snapshot_id": snapshot_id,
             "has_changes": feed["has_changes"],
+            "change_count": feed.get("change_count", 0),
+            "check_items": feed["check_items"],
             "recommend_rule_update": feed["recommend_rule_update"],
             "active_check_rules": rule_count,
             "verdict": "需更新模板" if feed["recommend_rule_update"] else "通过",
         }
+
+    def create_snapshot_report(self, values: dict[str, Any]) -> dict[str, Any]:
+        """按快照采集顺序生成质量报告，检查清单由快照差异回写。"""
+        from app.services.page_snapshot import PageSnapshotService
+        return PageSnapshotService().generate_quality_report(values)
+
+    def list_snapshot_reports(self, page_uri: str | None = None) -> dict[str, Any]:
+        from app.services.page_snapshot import PageSnapshotService
+        reports = PageSnapshotService().list_reports(page_uri)
+        return {"ok": True, "items": reports, "total": len(reports)}
+
+    def snapshot_difference_view(self, page_uri: str) -> dict[str, Any]:
+        from app.services.page_snapshot import PageSnapshotService
+        return PageSnapshotService().build_difference_view(page_uri)
 
     def domain_snapshot(self) -> dict[str, Any]:
         base = super().domain_snapshot()
@@ -132,5 +148,6 @@ class QualityCheckService(BaseModuleService):
             "total_rules": len(rules),
             "active_rules": sum(1 for r in rules if r.get("status") == "已启用"),
             "blocking_rules": sum(1 for r in rules if r.get("是否阻断") == "是"),
+            "snapshot_reports": len(store.quality_reports()),
         }
         return base
